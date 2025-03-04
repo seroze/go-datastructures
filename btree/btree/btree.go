@@ -196,14 +196,14 @@ func (node *BTreeNode[T]) delete(key T) {
 			return
 		}
 
-		// Case 2a: check if child has enough keys
+		// Case 2a: check if child doesn't have enough keys
 		if len(node.children[i].keys) < t {
 			//children[i] is guaranteed to exist at this point
-			// borrow from left or right
+			// borrow from left or right but fill it
 			node.fillChild(i)
 		}
 
-		// If the last child was merged then recurse on the (i-1)th child
+		// If the last child was merged from above then recurse on the (i-1)th child
 		if i > len(node.keys) {
 			node.children[i-1].delete(key)
 		} else {
