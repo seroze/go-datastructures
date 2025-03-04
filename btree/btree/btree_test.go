@@ -52,3 +52,69 @@ func TestBTreeInsertDuplicates(t *testing.T) {
 	// Since we're not explicitly handling duplicates, it should just be found once
 	// (Structural validation would require more in-depth tests)
 }
+
+func TestBTreeDeletion(t *testing.T) {
+	fmt.Println("Running B-Tree Deletion Tests...")
+
+	tDegree := 2 // Minimum degree
+	btree := BTree[int]{root: NewBTreeNode[int](tDegree, true), t: tDegree}
+
+	// Insert elements
+	elements := []int{10, 20, 5, 6, 12, 30, 7, 17}
+	for _, el := range elements {
+		btree.Insert(el)
+	}
+
+	fmt.Println("Initial B-Tree:")
+	btree.PrintBTree()
+
+	// Case 1: Deleting a leaf node
+	t.Run("DeleteLeafNode", func(t *testing.T) {
+		fmt.Println("\nDeleting leaf node 6...")
+		btree.Delete(6)
+		btree.PrintBTree()
+		if btree.Search(6) {
+			t.Errorf("Key 6 should have been deleted but is still present.")
+		}
+	})
+
+	// Case 2a: Deleting an internal node where left child has enough keys
+	t.Run("DeleteInternalNodeLeft", func(t *testing.T) {
+		fmt.Println("\nDeleting internal node 10...")
+		btree.Delete(10)
+		btree.PrintBTree()
+		if btree.Search(10) {
+			t.Errorf("Key 10 should have been deleted but is still present.")
+		}
+	})
+
+	// Case 2b: Deleting an internal node where right child has enough keys
+	t.Run("DeleteInternalNodeRight", func(t *testing.T) {
+		fmt.Println("\nDeleting internal node 12...")
+		btree.Delete(12)
+		btree.PrintBTree()
+		if btree.Search(12) {
+			t.Errorf("Key 12 should have been deleted but is still present.")
+		}
+	})
+
+	// Case 2c: Deleting an internal node where both children have t-1 keys
+	t.Run("DeleteInternalNodeBothTMinus1", func(t *testing.T) {
+		fmt.Println("\nDeleting internal node 20...")
+		btree.Delete(20)
+		btree.PrintBTree()
+		if btree.Search(20) {
+			t.Errorf("Key 20 should have been deleted but is still present.")
+		}
+	})
+
+	// Case 3: Deleting from a node that requires merging
+	t.Run("DeleteNodeCausesMerge", func(t *testing.T) {
+		fmt.Println("\nDeleting node 30 (causes merge)...")
+		btree.Delete(30)
+		btree.PrintBTree()
+		if btree.Search(30) {
+			t.Errorf("Key 30 should have been deleted but is still present.")
+		}
+	})
+}

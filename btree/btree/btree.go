@@ -105,6 +105,9 @@ func (node *BTreeNode[T]) splitChild(i int) {
 
 func (tree *BTree[T]) Insert(key T) {
 	root := tree.root
+	// what's the point of splitting if the root is full ?
+	// cause it's to create non-full node at the top and at the
+	// same time it creates non-full child's
 	if len(root.keys) == 2*tree.t-1 { // If root is full, create a new root
 		newNode := NewBTreeNode[T](tree.t, false)
 		newNode.children = append(newNode.children, root)
@@ -139,6 +142,8 @@ func (node *BTreeNode[T]) insertNonFull(key T) {
 		}
 		i++
 		// if the child node is almost full, split it
+		// we recursively keep splitting the child if it's full
+		// and at the same time the parent is definetly non-full
 		if len(node.children[i].keys) == (2*t)-1 {
 			node.splitChild(i)
 			if key > node.keys[i] {
@@ -150,29 +155,189 @@ func (node *BTreeNode[T]) insertNonFull(key T) {
 }
 
 func (tree *BTree[T]) Delete(target T) {
-	root := tree.root
-	t := root.t
-	// first search for the key
-	node, index := root.search(target)
-	if node == nil {
-		// do nothing
+	if tree.root == nil {
 		return
 	}
-	// Case 1: if it's a leaf
-	if node.leaf {
-		//just delete it, but make sure it has >=t leaves
-		if len(node.keys) >= t {
-			j := index
-			for j+1 < len(node.keys) {
-				//swap j with it's immediate right
-				node.keys[j] = node.keys[j+1]
-				j++
-			}
-			// pop the last element
-			node.keys = node.keys[:len(node.keys)-1]
+
+	tree.root.delete(target)
+
+	// if the root node has no keys left
+	// you'll understand this better once you go through the
+	// rest of the explanation
+	if len(tree.root.keys) == 0 {
+		if !tree.root.leaf {
+			tree.root = tree.root.children[0]
+		} else {
+			tree.root = nil
 		}
 	}
 
+}
+
+func (node *BTreeNode[T]) delete(key T) {
+	t := node.t
+	i := 0
+	for i < len(node.keys) && key > node.keys[i] {
+		i++
+	}
+
+	//Case 1: if the key is present inside this node
+	if i < len(node.keys) && node.keys[i] == key {
+		// Case 1a: it's a leaf node
+		if node.leaf {
+			node.deleteFromLeaf(i)
+		} else {
+			// Case 1b: it's an internal node
+			node.deleteFromInternalNode(i)
+		}
+	} else {
+		// Case 2: key is not present in this node
+		if node.leaf {
+			// key is not present in this leaf node
+			return
+		}
+
+		// Case 2a: check if child has enough keys
+		if len(node.children[i].keys) < t {
+			//children[i] is guaranteed to exist at this point
+			// borrow from left or right
+			node.fillChild(i)
+		}
+
+		// If the last child was merged then recurse on the (i-1)th child
+		if i > len(node.keys) {
+			node.children[i-1].delete(key)
+		} else {
+			node.children[i].delete(key)
+		}
+	}
+}
+
+func (node *BTreeNode[T]) deleteFromLeaf(index int) {
+	// but what if this node has only t-1 keys ?
+	// deleteFromInternal takes care of this
+	node.keys = append(node.keys[:index], node.keys[index+1:]...)
+}
+
+// delets node.keys[index] from current node, it's assumed we have atleast t keys here
+func (node *BTreeNode[T]) deleteFromInternalNode(index int) {
+	key := node.keys[index]
+	t := node.t
+
+	// Case 1: if left child has atleast t keys, replace with predecessor
+	if len(node.children[index].keys) >= t {
+		pred := node.getPredecessor(index)
+		node.keys[index] = pred
+		node.children[index].delete(pred)
+	} else if len(node.children[index+1].keys) >= t {
+		// Case 2: if right child has atleast t keys, replace with successor
+		succ := node.getSuccessor(index)
+		node.keys[index] = succ
+		node.children[index+1].delete(succ)
+	} else {
+		// Case 3: merge the key and the right child into the left child
+		// for merge to work current node should have atleast t keys
+		node.mergeChildren(index)
+		node.children[index].delete(key)
+	}
+}
+
+// getPredecessor finds the predecessor of a key in the subtree
+func (node *BTreeNode[T]) getPredecessor(index int) T {
+	curr := node.children[index]
+	// keep moving along the right most child
+	for !curr.leaf {
+		curr = curr.children[len(curr.children)-1]
+	}
+	return curr.keys[len(curr.keys)-1]
+}
+
+func (node *BTreeNode[T]) getSuccessor(index int) T {
+	curr := node.children[index+1]
+
+	// keep moving along the leftmost child
+	for !curr.leaf {
+		curr = curr.children[0]
+	}
+	return curr.keys[0]
+}
+
+func (node *BTreeNode[T]) fillChild(index int) {
+	t := node.t
+	if index != 0 && len(node.children[index-1].keys) >= t {
+		// Borrow from the left sibling
+		node.borrowFromLeft(index)
+	} else if index+1 < len(node.children) && len(node.children[index+1].keys) >= t {
+		// Borrow from the right sibling
+		node.borrowFromRight(index)
+	} else {
+		// merge with a sibling
+		// i have no clue what this is
+		if index != len(node.keys) {
+			node.mergeChildren(index)
+		} else {
+			node.mergeChildren(index - 1)
+		}
+	}
+}
+
+func (node *BTreeNode[T]) borrowFromLeft(index int) {
+	child := node.children[index]
+	leftSibling := node.children[index-1]
+
+	// move key from parent to the child
+	child.keys = append([]T{node.keys[index-1]}, child.keys...)
+	// replace the parent's key with left sibling's rightmost key
+	node.keys[index-1] = leftSibling.keys[len(leftSibling.keys)-1]
+
+	// move the right most child of left sibling as left child to interested node
+	if !leftSibling.leaf {
+		child.children = append([]*BTreeNode[T]{leftSibling.children[len(leftSibling.keys)-1]}, child.children...)
+		leftSibling.children = leftSibling.children[:len(leftSibling.children)-1]
+	}
+
+	// remove the borrowed key from the left sibling
+	leftSibling.keys = leftSibling.keys[:len(leftSibling.keys)-1]
+}
+
+// borrowFromRight borrows a key from the right sibling
+func (node *BTreeNode[T]) borrowFromRight(index int) {
+	child := node.children[index]
+	rightSibling := node.children[index+1]
+
+	// Move a key from the parent to the child
+	child.keys = append(child.keys, node.keys[index])
+	node.keys[index] = rightSibling.keys[0]
+
+	// Move the first child of the right sibling to the child
+	if !rightSibling.leaf {
+		child.children = append(child.children, rightSibling.children[0])
+		rightSibling.children = rightSibling.children[1:]
+	}
+
+	// Remove the borrowed key from the right sibling
+	rightSibling.keys = rightSibling.keys[1:]
+}
+
+// one last function
+// merges child with it's right sibling and delete's the right sibling after merging with parent
+func (node *BTreeNode[T]) mergeChildren(index int) {
+	child := node.children[index]
+	rightSibling := node.children[index+1]
+
+	// move the key from the parent to the children
+	child.keys = append(child.keys, node.keys[index])
+	child.keys = append(child.keys, rightSibling.keys...)
+
+	// move the children of the rightSibling to the child
+	if !child.leaf {
+		child.children = append(child.children, rightSibling.children...)
+	}
+
+	// remove the key and rightSibling from the parent
+	node.keys = append(node.keys[:index], node.keys[index+1:]...)
+	// does it overflow
+	node.children = append(node.children[:index+1], node.children[index+2:]...)
 }
 
 // PrintBTree prints the structure of the B-Tree
