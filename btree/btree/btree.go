@@ -171,7 +171,6 @@ func (tree *BTree[T]) Delete(target T) {
 			tree.root = nil
 		}
 	}
-
 }
 
 func (node *BTreeNode[T]) delete(key T) {
